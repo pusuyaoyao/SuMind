@@ -493,11 +493,31 @@ LbdllcO4JZbSOPw0QZkTs4L8LamcB4yK7qlQMW/GfJBJAgMBAAE=
         labels.Children.Add(new TextBlock { Text = "重新安装后可继续使用原来的设置", Foreground = (Brush)FindResource("MutedBrush"), FontSize = 12, Margin = new Thickness(0, 5, 0, 0), TextWrapping = TextWrapping.Wrap });
         row.Children.Add(labels);
         layout.Children.Add(row);
+        var openError = new TextBlock { Foreground = (Brush)FindResource("MutedBrush"), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 10), Visibility = Visibility.Collapsed };
+        layout.Children.Add(openError);
+        var actionRow = new DockPanel { LastChildFill = true };
+        var openFolder = new System.Windows.Controls.Button { Content = "打开配置目录", Style = (Style)FindResource("SecondaryButton"), Margin = new Thickness(0, 0, 12, 0), HorizontalAlignment = System.Windows.HorizontalAlignment.Left };
+        openFolder.Click += (_, _) =>
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo(ExtensionSettingsStore.EnsureDesktopDirectory()) { UseShellExecute = true });
+                openError.Visibility = Visibility.Collapsed;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or Win32Exception or InvalidOperationException)
+            {
+                SettingsStore.Log(ex);
+                openError.Text = "无法打开配置目录：" + ex.Message;
+                openError.Visibility = Visibility.Visible;
+            }
+        };
+        DockPanel.SetDock(openFolder, Dock.Left);
+        actionRow.Children.Add(openFolder);
         var actions = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal, HorizontalAlignment = System.Windows.HorizontalAlignment.Right };
         var cancel = new System.Windows.Controls.Button { Content = "取消", Style = (Style)FindResource("SecondaryButton"), IsCancel = true, MinWidth = 70 };
         var remove = new System.Windows.Controls.Button { Content = "确认卸载", Style = (Style)FindResource("SecondaryButton"), MinWidth = 88, Margin = new Thickness(8, 0, 0, 0) };
         remove.Click += (_, _) => dialog.DialogResult = true;
-        actions.Children.Add(cancel); actions.Children.Add(remove); layout.Children.Add(actions);
+        actions.Children.Add(cancel); actions.Children.Add(remove); actionRow.Children.Add(actions); layout.Children.Add(actionRow);
         var root = new Grid { Background = (Brush)FindResource("FrameBrush"), ClipToBounds = true };
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(40) });
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });

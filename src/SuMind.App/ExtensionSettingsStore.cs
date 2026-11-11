@@ -21,6 +21,14 @@ public static class ExtensionSettingsStore
 
     public static bool DesktopExists => File.Exists(DesktopFile);
 
+    public static string EnsureDesktopDirectory()
+    {
+        EnsureNormalPath();
+        Directory.CreateDirectory(DesktopDirectory);
+        EnsureNormalPath();
+        return DesktopDirectory;
+    }
+
     public static void SaveDesktop(DesktopNavigationSettings settings)
     {
         EnsureNormalPath();
