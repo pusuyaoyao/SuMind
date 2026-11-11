@@ -231,7 +231,8 @@ LbdllcO4JZbSOPw0QZkTs4L8LamcB4yK7qlQMW/GfJBJAgMBAAE=
         bool preview = desktopCatalogItem?.IsPreview == true;
         bool compatible = desktopCatalogItem?.Architecture == (RuntimeInformation.ProcessArchitecture switch { Architecture.X64 => "win-x64", Architecture.Arm64 => "win-arm64", Architecture.X86 => "win-x86", _ => "unsupported" });
         bool signed = !string.IsNullOrEmpty(desktopCatalogItem?.Signature);
-        DesktopStatus.Text = installed ? $"已安装 {desktopPackage!.Version}" + (updateAvailable ? $" · 可更新至 {desktopCatalogItem!.Version}" : "") : desktopCatalogItem is null ? "尚无可安装版本" : !compatible ? "当前系统架构不受支持" : !trusted || !signed ? "发布签名尚未配置" : preview ? "测试版：Windows 11 效果暂不可用" : $"可安装 {desktopCatalogItem.Version}";
+        if (desktopCatalogItem is not null) DesktopVersion.Text = installed ? $"v{desktopPackage!.Version}" : desktopCatalogItem.VersionLabel;
+        DesktopStatus.Text = installed ? (updateAvailable ? $"可更新至 v{desktopCatalogItem!.Version}" : "") : desktopCatalogItem is null ? "尚无可安装版本" : !compatible ? "当前系统架构不受支持" : !trusted || !signed ? "发布签名尚未配置" : preview ? "测试版：Windows 11 效果暂不可用" : "";
         DesktopInstallButton.Content = installed ? updateAvailable ? "更新" : "已安装" : "安装";
         DesktopInstallButton.IsEnabled = (!installed || updateAvailable) && desktopCatalogItem is not null && trusted && signed && compatible;
         DesktopRemoveButton.Visibility = installed ? Visibility.Visible : Visibility.Collapsed;
@@ -302,6 +303,7 @@ LbdllcO4JZbSOPw0QZkTs4L8LamcB4yK7qlQMW/GfJBJAgMBAAE=
         public string Name => Item.Name;
         public string Description => Item.Description;
         public string Metadata => Item.Metadata;
+        public string VersionLabel => Item.VersionLabel;
         private ImageSource? icon;
         public ImageSource? Icon { get => icon; set { icon = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Icon))); } }
         public event PropertyChangedEventHandler? PropertyChanged;
