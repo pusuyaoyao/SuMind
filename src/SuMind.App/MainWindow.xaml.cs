@@ -34,8 +34,20 @@ public partial class MainWindow : Window
     private bool packageOperation;
     private const string DesktopId = "desktop-navigation";
     private string ExtensionRoot => string.IsNullOrWhiteSpace(settings.ExtensionDirectory) ? Path.Combine(SettingsStore.DirectoryPath, "extensions") : settings.ExtensionDirectory;
-    // No publisher key is trusted until the release signing key is provisioned deliberately.
-    private const string TrustedPublisherPublicKey = "";
+    // Publisher public key only. The signing private key remains outside the repository.
+    private const string TrustedPublisherPublicKey = """
+-----BEGIN PUBLIC KEY-----
+MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAz/oIpScuNWjj+t/Sq4G1
+j7dqdU7t6gsFqeM3fx2cQ0hT7WcvuwdQrSvprMSoQ3igA1x/DWVNsSoS/YCja3Zg
+AErGfBkq1v4yDtpYTBEixx/N8mmcdikNK8cYaf8p4a7QpzdEMIOzJoLngV9C1zuE
+PZcOK7eOxVriUR3P7zVNMpFGUth6yx41WhrnCn66jbkMwJvsz0nvnN9dkNnA2jKt
+QB6O9G8GIXT6dMzVe4DaRbWB2U9kBpkY8Gk9RmrCi31FrnUMV4RY6b8sfmKsZPT/
+ylvZdMzJTqrY5O8sgGPuL37XTRCUIHmceLPV3sBxOEnLABT6cYF53mx1Pj6wTmrv
+Im5sRQ6SyO7pvLmNwfo2AOJVuk0HksENNaIuzMxYBJvEvDajIJhGtNOBud3Qiqu7
+wMoXgrkNkBIlL8czbp2VUYUe067KXJ3wEs+y1vllEETX2rIbu9074/i5i/xSuf0r
+LbdllcO4JZbSOPw0QZkTs4L8LamcB4yK7qlQMW/GfJBJAgMBAAE=
+-----END PUBLIC KEY-----
+""";
 
     public MainWindow()
     {
@@ -218,11 +230,13 @@ public partial class MainWindow : Window
         bool updateAvailable = installed && desktopCatalogItem is not null && Version.TryParse(desktopCatalogItem.Version, out var available) && Version.TryParse(desktopPackage!.Version, out var current) && available > current;
         bool preview = desktopCatalogItem?.IsPreview == true;
         bool compatible = desktopCatalogItem?.Architecture == (RuntimeInformation.ProcessArchitecture switch { Architecture.X64 => "win-x64", Architecture.Arm64 => "win-arm64", Architecture.X86 => "win-x86", _ => "unsupported" });
-        DesktopStatus.Text = installed ? $"已安装 {desktopPackage!.Version}" + (updateAvailable ? $" · 可更新至 {desktopCatalogItem!.Version}" : "") : desktopCatalogItem is null ? "尚无可安装版本" : preview ? "预览包尚未通过验证，暂不可安装" : !compatible ? "当前系统架构不受支持" : !trusted ? "发布签名尚未配置" : $"可安装 {desktopCatalogItem.Version}";
+        bool signed = !string.IsNullOrEmpty(desktopCatalogItem?.Signature);
+        DesktopStatus.Text = installed ? $"已安装 {desktopPackage!.Version}" + (updateAvailable ? $" · 可更新至 {desktopCatalogItem!.Version}" : "") : desktopCatalogItem is null ? "尚无可安装版本" : !compatible ? "当前系统架构不受支持" : !trusted || !signed ? "发布签名尚未配置" : preview ? "测试版：Windows 11 效果暂不可用" : $"可安装 {desktopCatalogItem.Version}";
         DesktopInstallButton.Content = installed ? updateAvailable ? "更新" : "已安装" : "安装";
-        DesktopInstallButton.IsEnabled = (!installed || updateAvailable) && desktopCatalogItem is not null && trusted && !preview && compatible;
+        DesktopInstallButton.IsEnabled = (!installed || updateAvailable) && desktopCatalogItem is not null && trusted && signed && compatible;
         DesktopRemoveButton.Visibility = installed ? Visibility.Visible : Visibility.Collapsed;
         DesktopOptions.Visibility = installed ? Visibility.Visible : Visibility.Collapsed;
+        if (installed && preview) DesktopNotice.Text = "测试版：Windows 11 任务栏效果尚不可用，可测试安装和卸载。";
         updatingDesktopControls = true;
         (desktopSettings.TaskbarAppearance switch { "Transparent" => TransparentEffect, "Glass" => GlassEffect, _ => NativeEffect }).IsChecked = true;
         updatingDesktopControls = false;
@@ -231,7 +245,7 @@ public partial class MainWindow : Window
     private async void DesktopInstall_Click(object sender, RoutedEventArgs e)
     {
         var item = desktopCatalogItem;
-        if (item is null || item.IsPreview || packageOperation || string.IsNullOrEmpty(TrustedPublisherPublicKey) || string.IsNullOrEmpty(item.Signature)) return;
+        if (item is null || packageOperation || string.IsNullOrEmpty(TrustedPublisherPublicKey) || string.IsNullOrEmpty(item.Signature)) return;
         if (!Version.TryParse(item.MinHostVersion, out var minimum) || minimum > (typeof(MainWindow).Assembly.GetName().Version ?? new Version(0, 0)))
         { DesktopStatus.Text = "需要更新 SuMind 才能安装此拓展。"; return; }
         DesktopInstallButton.IsEnabled = false;
@@ -246,7 +260,7 @@ public partial class MainWindow : Window
             await ExtensionCatalogService.DownloadPackageAsync(item, temp);
             await InstallDesktopPackageAsync(item, temp);
             RefreshDesktopState();
-            DesktopNotice.Text = "安装完成，选择任务栏外观。";
+            DesktopNotice.Text = item.IsPreview ? "测试版安装完成；Windows 11 任务栏效果尚不可用。" : "安装完成，选择任务栏外观。";
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Net.Http.HttpRequestException or OperationCanceledException or System.Security.Cryptography.CryptographicException or ArgumentException or FormatException or InvalidOperationException or Win32Exception or JsonException or KeyNotFoundException)
         { SettingsStore.Log(ex); RefreshDesktopState(); DesktopStatus.Text = "安装失败，请检查网络、版本和拓展签名。"; }
@@ -332,8 +346,8 @@ public partial class MainWindow : Window
         var item = desktopCatalogItem;
         if (item is null)
         { GitHubStatus.Text = "无法获取匹配的发布信息，请连接网络并刷新后重试。"; return; }
-        if (item.IsPreview || string.IsNullOrEmpty(item.Signature))
-        { GitHubStatus.Text = "开发预览包尚未完成签名和兼容性验证，暂不可安装。"; return; }
+        if (string.IsNullOrEmpty(item.Signature))
+        { GitHubStatus.Text = "拓展包尚未提供签名，暂不可安装。"; return; }
         if (!Version.TryParse(item.MinHostVersion, out var minimum) || minimum > (typeof(MainWindow).Assembly.GetName().Version ?? new Version(0, 0)))
         { GitHubStatus.Text = "需要更新 SuMind 才能安装此拓展。"; return; }
         if (desktopPackage is not null && Version.TryParse(desktopPackage.Version, out var installedVersion) && Version.TryParse(item.Version, out var candidateVersion) && candidateVersion <= installedVersion)
@@ -351,7 +365,7 @@ public partial class MainWindow : Window
             await InstallDesktopPackageAsync(item, dialog.FileName);
             RefreshDesktopState();
             GitHubStatus.Text = "本地拓展安装完成。";
-            DesktopNotice.Text = "安装完成，选择任务栏外观。";
+            DesktopNotice.Text = item.IsPreview ? "测试版安装完成；Windows 11 任务栏效果尚不可用。" : "安装完成，选择任务栏外观。";
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.Cryptography.CryptographicException or ArgumentException or FormatException or InvalidOperationException or Win32Exception or JsonException or OperationCanceledException or KeyNotFoundException)
         { SettingsStore.Log(ex); RefreshDesktopState(); GitHubStatus.Text = "本地安装失败：" + ex.Message; }
@@ -511,6 +525,9 @@ public partial class MainWindow : Window
     {
         var start = new ProcessStartInfo(Path.Combine(package.Directory, "DesktopNavigation.exe"))
         { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true, WorkingDirectory = package.Directory };
+        var runtimeDirectory = new DirectoryInfo(RuntimeEnvironment.GetRuntimeDirectory());
+        var dotnetRoot = runtimeDirectory.Parent?.Parent?.Parent?.FullName;
+        if (dotnetRoot is not null && File.Exists(Path.Combine(dotnetRoot, "dotnet.exe"))) start.Environment["DOTNET_ROOT"] = dotnetRoot;
         start.ArgumentList.Add("apply"); start.ArgumentList.Add(effect);
         using var process = Process.Start(start) ?? throw new InvalidOperationException("无法启动桌面导航。");
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));

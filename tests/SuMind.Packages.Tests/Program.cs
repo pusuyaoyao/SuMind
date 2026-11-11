@@ -57,6 +57,15 @@ try
     Assert(PackageInstaller.GetInstalled(installRoot, id) is null, "extension still installed");
     Assert(File.ReadAllText(settings) == "keep", "uninstall deleted settings");
     Assert(!PackageInstaller.Uninstall(installRoot, id), "uninstall should be idempotent");
+    if (args.Length == 3)
+    {
+        var packageBytes = File.ReadAllBytes(args[0]);
+        var expected = new PackageMetadata("桌面导航", "管理 Windows 任务栏外观，Dock 功能仍在规划。", "pusu11", "1.0.0", "win-x64", "83814626a6197013428379bf024442be01423e2e4359e35714b9fb071196096f");
+        var live = PackageInstaller.Install(args[0], Path.Combine(root, "release-test"), id, "0.1.1", Convert.ToHexString(SHA256.HashData(packageBytes)), File.ReadAllBytes(args[1]), File.ReadAllText(args[2]), expected);
+        Assert(File.Exists(Path.Combine(live.Directory, "DesktopNavigation.exe")), "released worker missing");
+        Assert(File.Exists(Path.Combine(live.Directory, "assets", "icon.png")), "released icon missing");
+        Console.WriteLine("Release package signature, metadata and installation passed.");
+    }
     Console.WriteLine("Package install, signature, traversal, upgrade and rollback checks passed.");
     return 0;
 }
