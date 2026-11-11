@@ -464,8 +464,19 @@ LbdllcO4JZbSOPw0QZkTs4L8LamcB4yK7qlQMW/GfJBJAgMBAAE=
         {
             Owner = this, Title = "卸载桌面导航", Width = 430, SizeToContent = SizeToContent.Height,
             ResizeMode = ResizeMode.NoResize, WindowStartupLocation = WindowStartupLocation.CenterOwner,
-            ShowInTaskbar = false, FontFamily = FontFamily,
-            Background = (Brush)FindResource("PageBrush"), Foreground = (Brush)FindResource("TextBrush")
+            ShowInTaskbar = false, FontFamily = FontFamily, Icon = Icon,
+            WindowStyle = WindowStyle.SingleBorderWindow,
+            Background = System.Windows.Media.Brushes.Transparent, Foreground = (Brush)FindResource("TextBrush")
+        };
+        System.Windows.Shell.WindowChrome.SetWindowChrome(dialog, new System.Windows.Shell.WindowChrome
+        {
+            CaptionHeight = 40, ResizeBorderThickness = new Thickness(0), GlassFrameThickness = new Thickness(0, 40, 0, 0),
+            CornerRadius = new CornerRadius(10)
+        });
+        dialog.SourceInitialized += (_, _) =>
+        {
+            bool dark = settings.Theme == "Dark" || (settings.Theme != "Light" && SystemUsesDarkTheme());
+            ApplyNativeCaptionTheme(new WindowInteropHelper(dialog).Handle, dark);
         };
         foreach (string key in new[] { "FrameBrush", "PageBrush", "CardBrush", "TextBrush", "MutedBrush", "BorderBrush", "HoverBrush", "SwitchOffBrush", "SwitchOnBrush" })
             dialog.Resources[key] = FindResource(key);
@@ -487,7 +498,22 @@ LbdllcO4JZbSOPw0QZkTs4L8LamcB4yK7qlQMW/GfJBJAgMBAAE=
         var remove = new System.Windows.Controls.Button { Content = "确认卸载", Style = (Style)FindResource("SecondaryButton"), MinWidth = 88, Margin = new Thickness(8, 0, 0, 0) };
         remove.Click += (_, _) => dialog.DialogResult = true;
         actions.Children.Add(cancel); actions.Children.Add(remove); layout.Children.Add(actions);
-        dialog.Content = layout;
+        var root = new Grid { Background = (Brush)FindResource("FrameBrush"), ClipToBounds = true };
+        root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(40) });
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        var header = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal, HorizontalAlignment = System.Windows.HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, IsHitTestVisible = false };
+        header.Children.Add(new System.Windows.Controls.Image { Source = TryFindResource("TitleLogo") as ImageSource ?? Icon, Width = 18, Height = 25, Margin = new Thickness(0, 0, 5, 0), Stretch = Stretch.Uniform });
+        header.Children.Add(new TextBlock { Text = "SuMind", FontSize = 13, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center });
+        root.Children.Add(header);
+        var close = new System.Windows.Controls.Button { Content = "\uE8BB", FontFamily = new System.Windows.Media.FontFamily("Segoe MDL2 Assets"), FontSize = 10, Width = 46, Height = 40, HorizontalAlignment = System.Windows.HorizontalAlignment.Right, Style = (Style)FindResource("CloseButton") };
+        System.Windows.Automation.AutomationProperties.SetName(close, "关闭");
+        System.Windows.Shell.WindowChrome.SetIsHitTestVisibleInChrome(close, true);
+        close.Click += (_, _) => dialog.Close();
+        root.Children.Add(close);
+        var surface = new Border { Background = (Brush)FindResource("PageBrush"), BorderBrush = (Brush)FindResource("BorderBrush"), BorderThickness = new Thickness(1, 1, 1, 0), CornerRadius = new CornerRadius(10, 10, 0, 0), Child = layout };
+        Grid.SetRow(surface, 1);
+        root.Children.Add(surface);
+        dialog.Content = root;
         return (dialog.ShowDialog() == true, keep.IsChecked == true);
     }
 
@@ -644,6 +670,11 @@ LbdllcO4JZbSOPw0QZkTs4L8LamcB4yK7qlQMW/GfJBJAgMBAAE=
     private void ApplyNativeCaptionTheme(bool dark)
     {
         IntPtr handle = new WindowInteropHelper(this).Handle;
+        ApplyNativeCaptionTheme(handle, dark);
+    }
+
+    private static void ApplyNativeCaptionTheme(IntPtr handle, bool dark)
+    {
         if (handle == IntPtr.Zero) return;
         int darkMode = dark ? 1 : 0;
         DwmSetWindowAttribute(handle, 20, ref darkMode, sizeof(int));
