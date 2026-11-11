@@ -233,7 +233,7 @@ LbdllcO4JZbSOPw0QZkTs4L8LamcB4yK7qlQMW/GfJBJAgMBAAE=
         bool compatible = desktopCatalogItem?.Architecture == (RuntimeInformation.ProcessArchitecture switch { Architecture.X64 => "win-x64", Architecture.Arm64 => "win-arm64", Architecture.X86 => "win-x86", _ => "unsupported" });
         bool signed = !string.IsNullOrEmpty(desktopCatalogItem?.Signature);
         if (desktopCatalogItem is not null) DesktopVersion.Text = installed ? $"v{desktopPackage!.Version}" : desktopCatalogItem.VersionLabel;
-        DesktopStatus.Text = installed ? (updateAvailable ? $"可更新至 v{desktopCatalogItem!.Version}" : "") : desktopCatalogItem is null ? "尚无可安装版本" : !compatible ? "当前系统架构不受支持" : !trusted || !signed ? "发布签名尚未配置" : preview ? "测试版：Windows 11 效果暂不可用" : "";
+        DesktopStatus.Text = installed ? (updateAvailable ? $"可更新至 v{desktopCatalogItem!.Version}" : "") : desktopCatalogItem is null ? "尚无可安装版本" : !compatible ? "当前系统架构不受支持" : !trusted || !signed ? "发布签名尚未配置" : "";
         DesktopInstallButton.Content = installed ? updateAvailable ? "更新" : "已安装" : "安装";
         DesktopInstallButton.IsEnabled = (!installed || updateAvailable) && desktopCatalogItem is not null && trusted && signed && compatible;
         DesktopRemoveButton.Visibility = installed ? Visibility.Visible : Visibility.Collapsed;
