@@ -20,4 +20,3 @@ SuMind 是面向 Windows 的模块化桌面控制中心，目前处于基础开�
 - `AGENTS.md`：本项目的协作约定。
 
 `bin/`、`obj/` 是可重新生成的构建文件，不纳入 Git。构建、兼容性及当前限制见 [架构说明](docs/architecture.md)，界面规则见 [界面开发约定](docs/ui-guidelines.md)。空目录不会被 Git 跟踪。
-
