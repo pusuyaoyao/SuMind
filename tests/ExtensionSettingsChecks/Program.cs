@@ -25,4 +25,3 @@ namespace SuMind
         public static readonly string DirectoryPath = Path.Combine(Path.GetTempPath(), "sumind-config-check-" + Guid.NewGuid().ToString("N"));
     }
 }
-

@@ -15,4 +15,3 @@ SuMind.App 是 WPF 控制中心；SuMind.Shared 定义组件描述、独立的�
 拓展页面将桌面导航、壁纸引擎和系统工具分别展示为一个拓展。桌面导航包含任务栏设置和未来的 Dock，作为同一个拓展。拓展包版本目录位于 `%LOCALAPPDATA%\SuMind\extensions`；壁纸引擎和系统工具仍是静态规划项。
 
 
-

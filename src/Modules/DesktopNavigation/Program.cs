@@ -27,4 +27,3 @@ static string ApplyWindows10(TaskbarAppearance mode)
     TaskbarAppearanceController.Apply(mode);
     return "已请求 Windows 10 更改任务栏外观；Explorer 重启后需重新应用。";
 }
-

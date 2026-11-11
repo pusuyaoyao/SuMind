@@ -136,4 +136,3 @@ internal static class ExtensionCatalogService
         throw new HttpRequestException("拓展包重定向次数过多。");
     }
 }
-

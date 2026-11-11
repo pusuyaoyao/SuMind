@@ -19,4 +19,3 @@ public static class PackageSignature
         package.Position = 0;
     }
 }
-

@@ -63,4 +63,3 @@ public static class ExtensionSettingsStore
                 throw new IOException("拓展数据目录不能是链接。");
     }
 }
-

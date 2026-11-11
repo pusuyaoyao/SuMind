@@ -145,4 +145,3 @@ public static class PackageInstaller
 
     private sealed record ActiveVersion(string Version);
 }
-

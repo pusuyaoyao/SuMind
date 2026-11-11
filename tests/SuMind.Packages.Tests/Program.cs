@@ -60,4 +60,3 @@ try
     return 0;
 }
 finally { Directory.Delete(root, recursive: true); }
-

@@ -10,4 +10,3 @@ public static class SettingsStore {
  public static void Log(Exception error) { try { Directory.CreateDirectory(DirectoryPath); File.AppendAllText(Path.Combine(DirectoryPath, "error.log"), $"{DateTimeOffset.Now:O} {error}{Environment.NewLine}"); } catch { } }
 }
 
-

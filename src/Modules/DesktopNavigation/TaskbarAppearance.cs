@@ -47,4 +47,3 @@ public static class TaskbarAppearanceController
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetClassName(IntPtr handle, [Out] char[] className, int maxCount);
     [DllImport("user32.dll", SetLastError = true)] private static extern int SetWindowCompositionAttribute(IntPtr handle, ref WindowCompositionAttributeData data);
 }
-

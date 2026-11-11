@@ -7,4 +7,3 @@ Windows 11 所有选项目前直接返回不支持，不启动后端或修改任
 实验后端参考了 [TranslucentTB](https://github.com/TranslucentTB/TranslucentTB) 2026.2 的便携版和配置；上游为 GPL-3.0。`prepare-backend.ps1` 可以下载固定哈希的官方包，但主程序现阶段不调用它。若将后端随产品分发，必须审查 GPL 合规、提供完整对应源代码及许可，并验证 Microsoft.UI.Xaml 2.8、VCLibs、操作系统架构与版本。不能仅凭路径或哈希视为签名验证。
 
 Windows 11、任务栏恢复、多屏、系统主题、Explorer 重启、后台运行、`.suminds` 安装和更新均尚未验收；本组件不应作为稳定成品发布。
-

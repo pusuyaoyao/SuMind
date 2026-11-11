@@ -28,4 +28,3 @@ try
     Console.WriteLine("Local package matching passed.");
 }
 finally { File.Delete(localFile); }
-

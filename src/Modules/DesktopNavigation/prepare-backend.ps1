@@ -20,4 +20,3 @@ try {
 } finally {
     Remove-Item -LiteralPath $archive -ErrorAction SilentlyContinue
 }
-
