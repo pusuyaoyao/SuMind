@@ -229,6 +229,7 @@ LbdllcO4JZbSOPw0QZkTs4L8LamcB4yK7qlQMW/GfJBJAgMBAAE=
         bool trusted = !string.IsNullOrEmpty(TrustedPublisherPublicKey);
         bool updateAvailable = installed && desktopCatalogItem is not null && Version.TryParse(desktopCatalogItem.Version, out var available) && Version.TryParse(desktopPackage!.Version, out var current) && available > current;
         bool preview = desktopCatalogItem?.IsPreview == true;
+        DesktopPreview.Visibility = preview ? Visibility.Visible : Visibility.Collapsed;
         bool compatible = desktopCatalogItem?.Architecture == (RuntimeInformation.ProcessArchitecture switch { Architecture.X64 => "win-x64", Architecture.Arm64 => "win-arm64", Architecture.X86 => "win-x86", _ => "unsupported" });
         bool signed = !string.IsNullOrEmpty(desktopCatalogItem?.Signature);
         if (desktopCatalogItem is not null) DesktopVersion.Text = installed ? $"v{desktopPackage!.Version}" : desktopCatalogItem.VersionLabel;
@@ -303,6 +304,7 @@ LbdllcO4JZbSOPw0QZkTs4L8LamcB4yK7qlQMW/GfJBJAgMBAAE=
         public string Name => Item.Name;
         public string Description => Item.Description;
         public string Metadata => Item.Metadata;
+        public Visibility PreviewVisibility => Item.IsPreview ? Visibility.Visible : Visibility.Collapsed;
         public string VersionLabel => Item.VersionLabel;
         private ImageSource? icon;
         public ImageSource? Icon { get => icon; set { icon = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Icon))); } }
@@ -675,6 +677,8 @@ LbdllcO4JZbSOPw0QZkTs4L8LamcB4yK7qlQMW/GfJBJAgMBAAE=
         SetBrush("CardBrush", dark ? "#242423" : "#FFFFFF");
         SetBrush("TextBrush", dark ? "#EDEBE8" : "#292827");
         SetBrush("MutedBrush", dark ? "#A9A5A0" : "#777370");
+        SetBrush("PreviewBackgroundBrush", dark ? "#393149" : "#EEEAFB");
+        SetBrush("PreviewTextBrush", dark ? "#D1BEF4" : "#66518B");
         SetBrush("BorderBrush", dark ? "#3B3936" : "#E8E4E1");
         SetBrush("HoverBrush", dark ? "#3B3936" : "#E9E5E2");
         SetBrush("SelectedBrush", dark ? "#44413E" : "#E6E1DE");

@@ -13,7 +13,7 @@ internal sealed record ExtensionCatalogItem(string Id, string Name, string Descr
     string MinHostVersion, string Architecture, string PackageUrl, string Sha256, long Size, string? Signature,
     string Author = "", bool IsPreview = false, string? IconUrl = null, string? IconSha256 = null)
 {
-    public string Metadata => $"作者 {Author}" + (IsPreview ? " · 开发预览" : "");
+    public string Metadata => $"作者 {Author}";
     public string VersionLabel => $"v{Version}";
 }
 
