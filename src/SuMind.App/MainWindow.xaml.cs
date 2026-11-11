@@ -9,18 +9,32 @@ using System.Windows.Media.Animation;
 using Microsoft.Win32;
 using SuMind.Shared;
 using Forms = System.Windows.Forms;
+using Brush = System.Windows.Media.Brush;
+using SuMind.Packages;
+using System.IO;
+using System.Diagnostics;
+using System.Text.Json;
 
 namespace SuMind;
 
 public partial class MainWindow : Window
 {
     private AppSettings settings = new();
+    private DesktopNavigationSettings desktopSettings = new();
     private Forms.NotifyIcon? tray;
     private System.Drawing.Icon? trayIcon;
     private System.IO.Stream? trayIconStream;
     private bool ready;
     private bool exiting;
     private bool sidebarCollapsed;
+    private ExtensionCatalogItem? desktopCatalogItem;
+    private InstalledPackage? desktopPackage;
+    private bool updatingDesktopControls;
+    private bool packageOperation;
+    private const string DesktopId = "desktop-navigation";
+    private string ExtensionRoot => string.IsNullOrWhiteSpace(settings.ExtensionDirectory) ? Path.Combine(SettingsStore.DirectoryPath, "extensions") : settings.ExtensionDirectory;
+    // No publisher key is trusted until the release signing key is provisioned deliberately.
+    private const string TrustedPublisherPublicKey = "";
 
     public MainWindow()
     {
@@ -36,6 +50,25 @@ public partial class MainWindow : Window
             SettingsStore.Log(ex);
             SettingsNotice.Text = "配置读取失败，已使用默认设置。请检查本地配置文件。";
         }
+        try
+        {
+            if (!ExtensionSettingsStore.DesktopExists && settings.TaskbarAppearance is not null)
+            {
+                desktopSettings.TaskbarAppearance = settings.TaskbarAppearance;
+                ExtensionSettingsStore.SaveDesktop(desktopSettings);
+            }
+            desktopSettings = ExtensionSettingsStore.LoadDesktop();
+            if (settings.TaskbarAppearance is not null)
+            {
+                settings.TaskbarAppearance = null;
+                SettingsStore.Save(settings);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        {
+            SettingsStore.Log(ex);
+            SettingsNotice.Text = "拓展配置读取失败，请检查本地配置。";
+        }
 
         ModuleEntry Planned(string id, string name, string description) => new(
             new ModuleDescriptor(id, name, description),
@@ -43,15 +76,16 @@ public partial class MainWindow : Window
                 RuntimeState.NotRunning, "尚未提供"));
         ModuleList.ItemsSource = new[]
         {
-            Planned("desktop-navigation", "桌面导航", "管理原生任务栏和 Dock。"),
             Planned("wallpaper", "壁纸引擎", "管理桌面壁纸，计划支持动态壁纸。"),
             Planned("system-optimization", "系统工具", "查看和管理系统设置与维护工具。")
         };
         (settings.Theme switch { "Light" => LightTheme, "Dark" => DarkTheme, _ => SystemTheme }).IsChecked = true;
         CloseToTrayBox.IsChecked = settings.CloseToTray;
+        ExtensionPathText.Text = ExtensionRoot;
         ApplyTheme();
         UpdateThemeIndicator(false);
         UpdateNavigation(false);
+        RefreshDesktopState();
         Loaded += async (_, _) => { UpdateNavigation(false); await RefreshGitHubReleasesAsync(); };
 
         var menu = new Forms.ContextMenuStrip();
@@ -113,7 +147,7 @@ public partial class MainWindow : Window
     private void ToggleSidebar_Click(object sender, RoutedEventArgs e)
     {
         sidebarCollapsed = !sidebarCollapsed;
-        SidebarColumn.Width = new GridLength(sidebarCollapsed ? 68 : 140);
+        SidebarColumn.Width = new GridLength(sidebarCollapsed ? 60 : 140);
         ModulesNavContent.Width = sidebarCollapsed ? 40 : 120;
         SettingsNavContent.Width = sidebarCollapsed ? 40 : 120;
         ModulesLabel.Visibility = sidebarCollapsed ? Visibility.Collapsed : Visibility.Visible;
@@ -140,20 +174,294 @@ public partial class MainWindow : Window
         GitHubStatus.Text = "正在连接 GitHub…";
         try
         {
-            var releases = await GitHubReleaseService.GetLatestReleaseAsync();
-            GitHubStatus.Text = releases is null
-                ? "未找到公开的 GitHub 发布版本，拓展安装暂不可用。"
-                : $"GitHub 最新版本：{releases}。拓展安装功能尚未接入。";
+            var catalog = await ExtensionCatalogService.GetCatalogAsync();
+            var architecture = RuntimeInformation.ProcessArchitecture switch { Architecture.X64 => "win-x64", Architecture.Arm64 => "win-arm64", Architecture.X86 => "win-x86", _ => "unsupported" };
+            desktopCatalogItem = catalog?.Extensions.FirstOrDefault(item => item.Id == DesktopId && item.Architecture == architecture);
+            GitHubStatus.Text = catalog is null ? "尚未发布拓展目录。" : "拓展目录已更新。";
+            RefreshDesktopState();
         }
-        catch (Exception ex) when (ex is System.Net.Http.HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+        catch (Exception ex) when (ex is System.Net.Http.HttpRequestException or TaskCanceledException or System.Text.Json.JsonException or IOException or InvalidOperationException)
         {
+            desktopCatalogItem = null;
             SettingsStore.Log(ex);
             GitHubStatus.Text = "无法读取 GitHub 发布信息，请检查网络后重试。";
+            RefreshDesktopState();
         }
         finally
         {
             RefreshReleasesButton.IsEnabled = true;
         }
+    }
+
+    private void RefreshDesktopState()
+    {
+        try { desktopPackage = PackageInstaller.GetInstalled(ExtensionRoot, DesktopId); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or ArgumentException)
+        {
+            SettingsStore.Log(ex);
+            desktopPackage = null;
+            DesktopStatus.Text = "拓展安装状态异常，请检查日志。";
+            DesktopInstallButton.IsEnabled = false;
+            DesktopOptions.Visibility = Visibility.Collapsed;
+            return;
+        }
+        bool installed = desktopPackage is not null;
+        bool trusted = !string.IsNullOrEmpty(TrustedPublisherPublicKey);
+        bool updateAvailable = installed && desktopCatalogItem is not null && Version.TryParse(desktopCatalogItem.Version, out var available) && Version.TryParse(desktopPackage!.Version, out var current) && available > current;
+        DesktopStatus.Text = installed ? $"已安装 {desktopPackage!.Version}" + (updateAvailable ? $" · 可更新至 {desktopCatalogItem!.Version}" : "") : desktopCatalogItem is null ? "尚无可安装版本" : !trusted ? "发布签名尚未配置" : $"可安装 {desktopCatalogItem.Version}";
+        DesktopInstallButton.Content = installed ? updateAvailable ? "更新" : "已安装" : "安装";
+        DesktopInstallButton.IsEnabled = (!installed || updateAvailable) && desktopCatalogItem is not null && trusted;
+        DesktopRemoveButton.Visibility = installed ? Visibility.Visible : Visibility.Collapsed;
+        DesktopOptions.Visibility = installed ? Visibility.Visible : Visibility.Collapsed;
+        updatingDesktopControls = true;
+        (desktopSettings.TaskbarAppearance switch { "Transparent" => TransparentEffect, "Glass" => GlassEffect, _ => NativeEffect }).IsChecked = true;
+        updatingDesktopControls = false;
+    }
+
+    private async void DesktopInstall_Click(object sender, RoutedEventArgs e)
+    {
+        var item = desktopCatalogItem;
+        if (item is null || packageOperation || string.IsNullOrEmpty(TrustedPublisherPublicKey)) return;
+        if (!Version.TryParse(item.MinHostVersion, out var minimum) || minimum > (typeof(MainWindow).Assembly.GetName().Version ?? new Version(0, 0)))
+        { DesktopStatus.Text = "需要更新 SuMind 才能安装此拓展。"; return; }
+        DesktopInstallButton.IsEnabled = false;
+        packageOperation = true;
+        LocalInstallButton.IsEnabled = false;
+        DesktopRemoveButton.IsEnabled = false;
+        DesktopOptions.IsEnabled = false;
+        DesktopStatus.Text = "正在下载并验证拓展…";
+        string temp = Path.Combine(Path.GetTempPath(), "sumind-download-" + Guid.NewGuid().ToString("N") + ".suminds");
+        try
+        {
+            await ExtensionCatalogService.DownloadPackageAsync(item, temp);
+            await InstallDesktopPackageAsync(item, temp);
+            RefreshDesktopState();
+            DesktopNotice.Text = "安装完成，选择任务栏外观。";
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Net.Http.HttpRequestException or OperationCanceledException or System.Security.Cryptography.CryptographicException or ArgumentException or FormatException or InvalidOperationException or Win32Exception or JsonException or KeyNotFoundException)
+        { SettingsStore.Log(ex); RefreshDesktopState(); DesktopStatus.Text = "安装失败，请检查网络、版本和拓展签名。"; }
+        finally { packageOperation = false; LocalInstallButton.IsEnabled = true; DesktopRemoveButton.IsEnabled = true; DesktopOptions.IsEnabled = true; try { if (File.Exists(temp)) File.Delete(temp); } catch (IOException) { } catch (UnauthorizedAccessException) { } }
+    }
+
+    private void DesktopGitHub_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            string url = "https://github.com/pusuyaoyao/SuMind/releases";
+            if (desktopCatalogItem is not null)
+            {
+                var asset = new Uri(desktopCatalogItem.PackageUrl);
+                var segments = asset.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+                if (segments.Length >= 6 && segments[2] == "releases" && segments[3] == "download")
+                    url = "https://github.com/pusuyaoyao/SuMind/releases/tag/" + segments[4];
+            }
+            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+        }
+        catch (Exception ex) when (ex is Win32Exception or InvalidOperationException or System.Security.SecurityException)
+        { SettingsStore.Log(ex); GitHubStatus.Text = "无法打开 GitHub，请检查默认浏览器。"; }
+    }
+
+    private async void LocalInstall_Click(object sender, RoutedEventArgs e)
+    {
+        if (packageOperation) return;
+        var dialog = new Microsoft.Win32.OpenFileDialog { Title = "选择 SuMind 拓展包", Filter = "SuMind 拓展包 (*.suminds)|*.suminds", CheckFileExists = true, Multiselect = false };
+        if (dialog.ShowDialog(this) != true) return;
+        if (string.IsNullOrEmpty(TrustedPublisherPublicKey))
+        { GitHubStatus.Text = "尚未配置发布签名，暂时不能验证和安装本地拓展。"; return; }
+        var item = desktopCatalogItem;
+        if (item is null)
+        { GitHubStatus.Text = "无法获取匹配的发布信息，请连接网络并刷新后重试。"; return; }
+        if (!Version.TryParse(item.MinHostVersion, out var minimum) || minimum > (typeof(MainWindow).Assembly.GetName().Version ?? new Version(0, 0)))
+        { GitHubStatus.Text = "需要更新 SuMind 才能安装此拓展。"; return; }
+        if (desktopPackage is not null && Version.TryParse(desktopPackage.Version, out var installedVersion) && Version.TryParse(item.Version, out var candidateVersion) && candidateVersion <= installedVersion)
+        { GitHubStatus.Text = "当前版本已安装，或本地包不是更新版本。"; return; }
+        packageOperation = true;
+        LocalInstallButton.IsEnabled = false;
+        DesktopInstallButton.IsEnabled = false;
+        DesktopRemoveButton.IsEnabled = false;
+        DesktopOptions.IsEnabled = false;
+        GitHubStatus.Text = "正在验证本地拓展…";
+        try
+        {
+            if (!await ExtensionCatalogService.MatchesLocalPackageAsync(item, dialog.FileName))
+                throw new InvalidDataException("拓展包与当前发布版本不匹配。");
+            await InstallDesktopPackageAsync(item, dialog.FileName);
+            RefreshDesktopState();
+            GitHubStatus.Text = "本地拓展安装完成。";
+            DesktopNotice.Text = "安装完成，选择任务栏外观。";
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.Cryptography.CryptographicException or ArgumentException or FormatException or InvalidOperationException or Win32Exception or JsonException or OperationCanceledException or KeyNotFoundException)
+        { SettingsStore.Log(ex); RefreshDesktopState(); GitHubStatus.Text = "本地安装失败：" + ex.Message; }
+        finally { packageOperation = false; LocalInstallButton.IsEnabled = true; DesktopRemoveButton.IsEnabled = true; DesktopOptions.IsEnabled = true; }
+    }
+
+    private void ChooseExtensionDirectory_Click(object sender, RoutedEventArgs e)
+    {
+        if (packageOperation) { SettingsNotice.Text = "请等待拓展操作完成后再更换目录。"; return; }
+        try
+        {
+            if (Directory.Exists(ExtensionRoot) && Directory.EnumerateDirectories(ExtensionRoot).Any())
+            { SettingsNotice.Text = "当前目录已有拓展或安装残留，请先卸载并处理残留后再更换目录。"; return; }
+            using var dialog = new Forms.FolderBrowserDialog { Description = "选择一个空目录用于存放 SuMind 拓展", ShowNewFolderButton = true, UseDescriptionForTitle = true };
+            if (dialog.ShowDialog() != Forms.DialogResult.OK) return;
+            string selected = Path.GetFullPath(dialog.SelectedPath).TrimEnd(Path.DirectorySeparatorChar);
+            if (!Path.IsPathFullyQualified(selected) || selected.StartsWith(@"\\", StringComparison.Ordinal) || selected.Length <= Path.GetPathRoot(selected)!.Length)
+                throw new IOException("请选择本地磁盘上的普通目录。");
+            for (var current = new DirectoryInfo(selected); current is not null; current = current.Parent)
+                if ((current.Attributes & FileAttributes.ReparsePoint) != 0) throw new IOException("拓展目录及其上级目录不能是链接。");
+            if (Directory.EnumerateFileSystemEntries(selected).Any()) throw new IOException("请选择空目录，以免影响已有文件。");
+            string? previous = settings.ExtensionDirectory;
+            settings.ExtensionDirectory = selected;
+            try { SettingsStore.Save(settings); } catch { settings.ExtensionDirectory = previous; throw; }
+            ExtensionPathText.Text = selected;
+            SettingsNotice.Text = "拓展目录已保存。";
+            RefreshDesktopState();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or System.Security.SecurityException)
+        { SettingsStore.Log(ex); SettingsNotice.Text = "无法更换目录：" + ex.Message; }
+    }
+
+    private async Task InstallDesktopPackageAsync(ExtensionCatalogItem item, string packagePath)
+    {
+            var previous = desktopPackage;
+            if (previous is not null) await ApplyDesktopEffectAsync(previous, "Native");
+            InstalledPackage installed;
+            try
+            {
+                installed = await Task.Run(() => PackageInstaller.Install(packagePath, ExtensionRoot, item.Id, item.Version, item.Sha256, Convert.FromBase64String(item.Signature), TrustedPublisherPublicKey));
+            }
+            catch
+            {
+                if (previous is not null && desktopSettings.TaskbarAppearance != "Native")
+                    try { await ApplyDesktopEffectAsync(previous, desktopSettings.TaskbarAppearance); } catch (Exception restoreError) { SettingsStore.Log(restoreError); }
+                throw;
+            }
+            if (previous is not null && desktopSettings.TaskbarAppearance != "Native")
+            {
+                try { await ApplyDesktopEffectAsync(installed, desktopSettings.TaskbarAppearance); }
+                catch
+                {
+                    PackageInstaller.ActivateVersion(ExtensionRoot, DesktopId, previous.Version);
+                    try { await ApplyDesktopEffectAsync(previous, desktopSettings.TaskbarAppearance); } catch (Exception restoreError) { SettingsStore.Log(restoreError); }
+                    throw;
+                }
+            }
+    }
+
+    private async void DesktopRemove_Click(object sender, RoutedEventArgs e)
+    {
+        if (desktopPackage is null || packageOperation) return;
+        var (confirmed, keepData) = ConfirmExtensionRemoval();
+        if (!confirmed) return;
+        packageOperation = true;
+        LocalInstallButton.IsEnabled = false;
+        DesktopInstallButton.IsEnabled = false;
+        DesktopOptions.IsEnabled = false;
+        DesktopRemoveButton.IsEnabled = false;
+        bool removed = false;
+        try
+        {
+            DesktopNotice.Text = "正在恢复原生效果…";
+            if (desktopSettings.TaskbarAppearance != "Native")
+                await ApplyDesktopEffectAsync(desktopPackage, "Native");
+            PackageInstaller.Uninstall(ExtensionRoot, DesktopId);
+            removed = true;
+            if (!keepData)
+            {
+                ExtensionSettingsStore.DeleteDesktopData();
+                desktopSettings = new DesktopNavigationSettings();
+            }
+            RefreshDesktopState();
+            GitHubStatus.Text = keepData ? "桌面导航已卸载，配置已保留。" : "桌面导航及其配置已移除。";
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or Win32Exception or JsonException or OperationCanceledException or KeyNotFoundException)
+        { SettingsStore.Log(ex); GitHubStatus.Text = (removed ? "拓展已移除，但配置未能删除：" : "卸载未完成：") + ex.Message; }
+        finally { packageOperation = false; LocalInstallButton.IsEnabled = true; DesktopRemoveButton.IsEnabled = true; DesktopOptions.IsEnabled = true; RefreshDesktopState(); }
+    }
+
+    private (bool Confirmed, bool KeepData) ConfirmExtensionRemoval()
+    {
+        var dialog = new Window
+        {
+            Owner = this, Title = "卸载桌面导航", Width = 430, SizeToContent = SizeToContent.Height,
+            ResizeMode = ResizeMode.NoResize, WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            ShowInTaskbar = false, FontFamily = FontFamily,
+            Background = (Brush)FindResource("PageBrush"), Foreground = (Brush)FindResource("TextBrush")
+        };
+        foreach (string key in new[] { "FrameBrush", "PageBrush", "CardBrush", "TextBrush", "MutedBrush", "BorderBrush", "HoverBrush", "SwitchOffBrush", "SwitchOnBrush" })
+            dialog.Resources[key] = FindResource(key);
+        var layout = new StackPanel { Margin = new Thickness(24) };
+        layout.Children.Add(new TextBlock { Text = "卸载桌面导航？", FontSize = 18, FontWeight = FontWeights.SemiBold });
+        layout.Children.Add(new TextBlock { Text = "卸载会移除拓展程序，并尝试恢复系统任务栏外观。", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 10, 0, 18), Foreground = (Brush)FindResource("MutedBrush") });
+        var row = new DockPanel { Margin = new Thickness(0, 0, 0, 22), LastChildFill = true };
+        var keep = new System.Windows.Controls.CheckBox { IsChecked = true, Style = (Style)FindResource("CapsuleSwitch"), VerticalAlignment = VerticalAlignment.Center };
+        System.Windows.Automation.AutomationProperties.SetName(keep, "保留桌面导航配置数据");
+        DockPanel.SetDock(keep, Dock.Right);
+        row.Children.Add(keep);
+        var labels = new StackPanel { Margin = new Thickness(0, 0, 16, 0) };
+        labels.Children.Add(new TextBlock { Text = "保留拓展配置", FontWeight = FontWeights.SemiBold });
+        labels.Children.Add(new TextBlock { Text = "重新安装后可继续使用原来的设置", Foreground = (Brush)FindResource("MutedBrush"), FontSize = 12, Margin = new Thickness(0, 5, 0, 0), TextWrapping = TextWrapping.Wrap });
+        row.Children.Add(labels);
+        layout.Children.Add(row);
+        var actions = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal, HorizontalAlignment = System.Windows.HorizontalAlignment.Right };
+        var cancel = new System.Windows.Controls.Button { Content = "取消", Style = (Style)FindResource("SecondaryButton"), IsCancel = true, MinWidth = 70 };
+        var remove = new System.Windows.Controls.Button { Content = "确认卸载", Style = (Style)FindResource("SecondaryButton"), MinWidth = 88, Margin = new Thickness(8, 0, 0, 0) };
+        remove.Click += (_, _) => dialog.DialogResult = true;
+        actions.Children.Add(cancel); actions.Children.Add(remove); layout.Children.Add(actions);
+        dialog.Content = layout;
+        return (dialog.ShowDialog() == true, keep.IsChecked == true);
+    }
+
+    private async void TaskbarEffect_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!ready || updatingDesktopControls || desktopPackage is null) return;
+        string effect = ((System.Windows.Controls.RadioButton)sender).Tag.ToString()!;
+        DesktopOptions.IsEnabled = false;
+        DesktopNotice.Text = "正在应用效果…";
+        try
+        {
+            string message = await ApplyDesktopEffectAsync(desktopPackage, effect);
+            string previousAppearance = desktopSettings.TaskbarAppearance;
+            desktopSettings.TaskbarAppearance = effect;
+            try { ExtensionSettingsStore.SaveDesktop(desktopSettings); }
+            catch
+            {
+                desktopSettings.TaskbarAppearance = previousAppearance;
+                try { await ApplyDesktopEffectAsync(desktopPackage, previousAppearance); }
+                catch (Exception restoreError) { SettingsStore.Log(restoreError); }
+                throw;
+            }
+            DesktopNotice.Text = message;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or Win32Exception or JsonException or OperationCanceledException or KeyNotFoundException)
+        {
+            SettingsStore.Log(ex);
+            DesktopNotice.Text = "无法应用：" + ex.Message;
+            updatingDesktopControls = true;
+            (desktopSettings.TaskbarAppearance switch { "Transparent" => TransparentEffect, "Glass" => GlassEffect, _ => NativeEffect }).IsChecked = true;
+            updatingDesktopControls = false;
+        }
+        finally { DesktopOptions.IsEnabled = true; }
+    }
+
+    private static async Task<string> ApplyDesktopEffectAsync(InstalledPackage package, string effect)
+    {
+        var start = new ProcessStartInfo(Path.Combine(package.Directory, "DesktopNavigation.exe"))
+        { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true, WorkingDirectory = package.Directory };
+        start.ArgumentList.Add("apply"); start.ArgumentList.Add(effect);
+        using var process = Process.Start(start) ?? throw new InvalidOperationException("无法启动桌面导航。");
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        var stdout = process.StandardOutput.ReadToEndAsync(timeout.Token);
+        var stderr = process.StandardError.ReadToEndAsync(timeout.Token);
+        try { await process.WaitForExitAsync(timeout.Token); }
+        catch (OperationCanceledException) { try { process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { } throw; }
+        string output = await stdout;
+        string error = await stderr;
+        using var result = JsonDocument.Parse(output);
+        bool success = process.ExitCode == 0 && result.RootElement.GetProperty("ok").GetBoolean();
+        string message = result.RootElement.TryGetProperty("message", out var msg) ? msg.GetString() ?? "" : "";
+        if (!success) throw new InvalidOperationException(string.IsNullOrEmpty(message) ? error : message);
+        return message;
     }
     private void Settings_Click(object sender, RoutedEventArgs e)
     {
@@ -279,6 +587,8 @@ public partial class MainWindow : Window
         Resources[key] = new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(color));
     }
 }
+
+
 
 
 

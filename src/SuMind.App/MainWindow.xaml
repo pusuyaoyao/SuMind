@@ -56,6 +56,26 @@
                 </ControlTemplate>
             </Setter.Value></Setter>
         </Style>
+        <Style x:Key="SecondaryButton" TargetType="Button">
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+            <Setter Property="Background" Value="{DynamicResource CardBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+            <Setter Property="Padding" Value="12,6" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{StaticResource {x:Static SystemParameters.FocusVisualStyleKey}}" />
+            <Setter Property="Template"><Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="ButtonSurface" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="ButtonSurface" Property="Background" Value="{DynamicResource HoverBrush}" /></Trigger>
+                        <Trigger Property="IsPressed" Value="True"><Setter TargetName="ButtonSurface" Property="Opacity" Value="0.7" /></Trigger>
+                        <Trigger Property="IsEnabled" Value="False"><Setter TargetName="ButtonSurface" Property="Opacity" Value="0.5" /></Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value></Setter>
+        </Style>
         <Style x:Key="SidebarToggleButton" TargetType="Button" BasedOn="{StaticResource IconButton}">
             <Setter Property="Template"><Setter.Value>
                 <ControlTemplate TargetType="Button">
@@ -91,6 +111,22 @@
                         
                         <Trigger Property="IsChecked" Value="True"><Setter Property="Foreground" Value="{DynamicResource TextBrush}" /></Trigger>
                         <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="ChoiceBackground" Property="BorderBrush" Value="{DynamicResource MutedBrush}" /><Setter TargetName="ChoiceBackground" Property="BorderThickness" Value="1" /></Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value></Setter>
+        </Style>
+        <Style x:Key="EffectChoice" TargetType="RadioButton" BasedOn="{StaticResource ThemeChoice}">
+            <Setter Property="Margin" Value="0,0,6,0" />
+            <Setter Property="Template"><Setter.Value>
+                <ControlTemplate TargetType="RadioButton">
+                    <Border x:Name="Surface" Background="{DynamicResource FrameBrush}" BorderBrush="Transparent" BorderThickness="1" CornerRadius="8" Padding="16,8">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Surface" Property="Background" Value="{DynamicResource HoverBrush}" /></Trigger>
+                        <Trigger Property="IsChecked" Value="True"><Setter TargetName="Surface" Property="Background" Value="{DynamicResource SelectedBrush}" /><Setter Property="Foreground" Value="{DynamicResource TextBrush}" /></Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}" /></Trigger>
+                        <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Surface" Property="Opacity" Value="0.45" /></Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Setter.Value></Setter>
@@ -162,7 +198,8 @@
                                 <TextBlock Text="拓展中心" FontSize="26" FontWeight="SemiBold" />
                                 <TextBlock Text="管理你的桌面拓展" Foreground="{DynamicResource MutedBrush}" Margin="0,8,0,18" FontSize="13" />
                                 <DockPanel Margin="0,0,0,24" LastChildFill="True">
-                                    <Button x:Name="RefreshReleasesButton" DockPanel.Dock="Right" Content="刷新" Padding="12,5" Click="RefreshReleases_Click" />
+                                    <Button x:Name="RefreshReleasesButton" DockPanel.Dock="Right" Style="{StaticResource SecondaryButton}" Content="刷新" Click="RefreshReleases_Click" />
+                                    <Button x:Name="LocalInstallButton" DockPanel.Dock="Right" Style="{StaticResource SecondaryButton}" Content="本地安装" Click="LocalInstall_Click" Margin="0,0,8,0" />
                                     <TextBlock x:Name="GitHubStatus" Foreground="{DynamicResource MutedBrush}" FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,12,0" Text="正在连接 GitHub…" />
                                 </DockPanel>
                                 <Grid Margin="0,0,0,12">
@@ -170,6 +207,22 @@
                                     <TextBlock Text="拓展状态" HorizontalAlignment="Right" Foreground="{DynamicResource MutedBrush}" FontSize="12" />
                                 </Grid>
                                 <Border Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="10">
+                                  <StackPanel>
+                                    <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="20,18">
+                                      <StackPanel>
+                                        <Grid>
+                                          <Grid.ColumnDefinitions><ColumnDefinition Width="46"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                          <Border Width="36" Height="36" CornerRadius="9" Background="{DynamicResource FrameBrush}" HorizontalAlignment="Left" VerticalAlignment="Top"><TextBlock Text="&#xE7F4;" FontFamily="Segoe MDL2 Assets" FontSize="17" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
+                                          <StackPanel Grid.Column="1" Margin="4,0,16,0"><TextBlock Text="桌面导航" FontSize="14" FontWeight="SemiBold"/><TextBlock Text="管理任务栏外观，后续支持 Dock。" Foreground="{DynamicResource MutedBrush}" FontSize="12" Margin="0,5,0,0" TextWrapping="Wrap"/><TextBlock x:Name="DesktopStatus" Foreground="{DynamicResource MutedBrush}" FontSize="12" Margin="0,8,0,0" TextWrapping="Wrap" Text="正在检查拓展状态…"/></StackPanel>
+                                          <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center"><Button Style="{StaticResource SecondaryButton}" Content="GitHub ↗" Click="DesktopGitHub_Click" ToolTip="查看桌面导航发布页面"/><Button x:Name="DesktopInstallButton" Style="{StaticResource SecondaryButton}" Content="安装" Margin="6,0,0,0" Click="DesktopInstall_Click" IsEnabled="False"/><Button x:Name="DesktopRemoveButton" Style="{StaticResource SecondaryButton}" Content="卸载" Margin="6,0,0,0" Click="DesktopRemove_Click" Visibility="Collapsed"/></StackPanel>
+                                        </Grid>
+                                        <StackPanel x:Name="DesktopOptions" Margin="50,18,0,0" Visibility="Collapsed">
+                                          <TextBlock Text="任务栏外观" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                                          <WrapPanel><RadioButton x:Name="NativeEffect" Content="原生" Tag="Native" GroupName="TaskbarEffect" Style="{StaticResource EffectChoice}" Checked="TaskbarEffect_Changed"/><RadioButton x:Name="TransparentEffect" Content="透明" Tag="Transparent" GroupName="TaskbarEffect" Style="{StaticResource EffectChoice}" Checked="TaskbarEffect_Changed"/><RadioButton x:Name="GlassEffect" Content="玻璃" Tag="Glass" GroupName="TaskbarEffect" Style="{StaticResource EffectChoice}" Checked="TaskbarEffect_Changed"/></WrapPanel>
+                                          <TextBlock x:Name="DesktopNotice" Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap" FontSize="12" Margin="0,10,0,0"/>
+                                        </StackPanel>
+                                      </StackPanel>
+                                    </Border>
                                     <ItemsControl x:Name="ModuleList">
                                         <ItemsControl.ItemTemplate><DataTemplate>
                                             <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="20,18">
@@ -189,6 +242,7 @@
                                             </Border>
                                         </DataTemplate></ItemsControl.ItemTemplate>
                                     </ItemsControl>
+                                  </StackPanel>
                                 </Border>
                             </StackPanel>
                             <StackPanel x:Name="SettingsPage" Visibility="Collapsed">
@@ -211,6 +265,13 @@
                                         </Border>
                                     </Grid>
                                 </Border>
+                                <TextBlock Text="拓展存放位置" FontSize="14" FontWeight="SemiBold" Margin="0,28,0,12" />
+                                <Border Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="10" Padding="20,18">
+                                  <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                    <StackPanel Margin="0,0,16,0"><TextBlock Text="拓展目录" FontSize="14" FontWeight="SemiBold"/><TextBlock x:Name="ExtensionPathText" Foreground="{DynamicResource MutedBrush}" FontSize="12" Margin="0,5,0,0" TextWrapping="Wrap"/></StackPanel>
+                                    <Button Grid.Column="1" Style="{StaticResource SecondaryButton}" Content="选择目录" Click="ChooseExtensionDirectory_Click" VerticalAlignment="Center"/>
+                                  </Grid>
+                                </Border>
                                 <TextBlock Text="窗口" FontSize="14" FontWeight="SemiBold" Margin="0,28,0,12" />
                                 <Border Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="10" Padding="20,18">
                                     <Grid>
@@ -222,6 +283,13 @@
                                         <CheckBox x:Name="CloseToTrayBox" Style="{StaticResource CapsuleSwitch}" Grid.Column="1" VerticalAlignment="Center" AutomationProperties.Name="关闭窗口时最小化到系统托盘" Foreground="{DynamicResource TextBrush}" Checked="CloseToTray_Changed" Unchecked="CloseToTray_Changed" />
                                     </Grid>
                                 </Border>
+                                <TextBlock Text="SuMind" FontSize="14" FontWeight="SemiBold" Margin="0,28,0,12" />
+                                <Border Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="10" Padding="20,18">
+                                    <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                        <StackPanel Margin="0,0,16,0"><TextBlock Text="卸载 SuMind" FontSize="14" FontWeight="SemiBold"/><TextBlock Text="当前为开发版，尚未提供主程序安装和卸载功能。" Foreground="{DynamicResource MutedBrush}" FontSize="12" Margin="0,5,0,0" TextWrapping="Wrap"/></StackPanel>
+                                        <Button Grid.Column="1" Style="{StaticResource SecondaryButton}" Content="卸载" IsEnabled="False" VerticalAlignment="Center"/>
+                                    </Grid>
+                                </Border>
                                 <TextBlock x:Name="SettingsNotice" Foreground="#C45151" TextWrapping="Wrap" Margin="0,16,0,0" />
                             </StackPanel>
                         </Grid>
@@ -231,6 +299,8 @@
         </Grid>
     </Border>
 </Window>
+
+
 
 
 

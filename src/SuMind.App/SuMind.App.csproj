@@ -11,6 +11,8 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\SuMind.Shared\SuMind.Shared.csproj" />
+    <ProjectReference Include="..\SuMind.Packages\SuMind.Packages.csproj" />
     <Resource Include="..\..\assets\SuMind-logo.ico" Link="Assets\SuMind-logo.ico" />
   </ItemGroup>
 </Project>
+
