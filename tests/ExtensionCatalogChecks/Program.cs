@@ -2,14 +2,15 @@ using SuMind;
 
 var item = new ExtensionCatalogItem("desktop-navigation", "桌面导航", "任务栏", "1.0.0", "1.0.0", "win-x64",
     "https://github.com/pusuyaoyao/SuMind/releases/download/desktop-navigation-v1.0.0/navigation.suminds",
-    new string('a', 64), 100, Convert.ToBase64String(new byte[] { 1 }));
+    new string('a', 64), 100, Convert.ToBase64String(new byte[] { 1 }), "pusu11");
 ExtensionCatalogService.Validate(item);
 foreach (var invalid in new[] {
     item with { PackageUrl = "http://github.com/pusuyaoyao/SuMind/releases/download/x/x.suminds" },
     item with { PackageUrl = "https://github.com/other/repo/releases/download/x/x.suminds" },
     item with { PackageUrl = "https://github.com/pusuyaoyao/SuMind/releases/download/x/x.suminds?redirect=other" },
     item with { Sha256 = new string('z', 64) }, item with { Size = 0 }, item with { Signature = "bad" },
-    item with { Id = "../bad" }, item with { Architecture = "any" }
+    item with { Id = "../bad" }, item with { Architecture = "any" }, item with { Author = "" },
+    item with { IconUrl = "https://example.com/bad.png", IconSha256 = new string('a', 64) }
 })
 {
     try { ExtensionCatalogService.Validate(invalid); throw new Exception("An invalid catalog entry was accepted."); }

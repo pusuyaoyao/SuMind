@@ -3,12 +3,13 @@ using System.Text.Json;
 namespace SuMind.Packages;
 
 public sealed record InstalledPackage(string Id, string Version, string Directory);
+public sealed record PackageMetadata(string Name, string Description, string Author, string MinHostVersion, string Architecture, string? IconSha256 = null);
 
 /// <summary>Stages verified packages under a private per-user root and atomically changes their active version pointer.</summary>
 public static class PackageInstaller
 {
     public static InstalledPackage Install(string packagePath, string installRoot, string expectedId,
-        string expectedVersion, string expectedSha256, byte[] signature, string trustedPublicKeyPem)
+        string expectedVersion, string expectedSha256, byte[] signature, string trustedPublicKeyPem, PackageMetadata? expectedMetadata = null)
     {
         ValidateId(expectedId);
         ValidateVersion(expectedVersion);
@@ -29,6 +30,15 @@ public static class PackageInstaller
             var manifest = PackageReader.Extract(input, staging, expectedId, expectedSha256);
             if (!string.Equals(manifest.Version, expectedVersion, StringComparison.Ordinal))
                 throw new InvalidDataException("拓展包版本与目录不一致。");
+            if (expectedMetadata is not null && (manifest.Name != expectedMetadata.Name || manifest.Description != expectedMetadata.Description
+                || manifest.Author != expectedMetadata.Author || manifest.MinHostVersion != expectedMetadata.MinHostVersion || manifest.Architecture != expectedMetadata.Architecture))
+                throw new InvalidDataException("拓展包信息与目录不一致。");
+            if (!string.IsNullOrEmpty(manifest.IconPath) && (!manifest.IconPath.EndsWith(".png", StringComparison.OrdinalIgnoreCase)
+                || !manifest.Files.Any(file => file.Path == manifest.IconPath)))
+                throw new InvalidDataException("拓展包图标信息无效。");
+            if (expectedMetadata is not null && !string.Equals(expectedMetadata.IconSha256,
+                manifest.Files.FirstOrDefault(file => file.Path == manifest.IconPath)?.Sha256, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("拓展图标与目录不一致。");
             Directory.Move(staging, final);
             moved = true;
             WriteActiveVersion(moduleRoot, expectedVersion);

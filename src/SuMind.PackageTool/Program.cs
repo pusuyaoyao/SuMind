@@ -55,9 +55,9 @@ if (args.Length == 5 && args[0] == "extract")
     }
     catch (Exception ex) { Console.Error.WriteLine(ex.Message); return 1; }
 }
-if (args.Length != 5 || args[0] != "pack")
+if (args.Length is not (5 or 6) || args[0] != "pack")
 {
-    Console.Error.WriteLine("用法: pack <拓展ID> <版本> <输入目录> <输出.suminds>");
+    Console.Error.WriteLine("用法: pack <拓展ID> <版本> <输入目录> <输出.suminds> [拓展信息.json]");
     Console.Error.WriteLine("      extract <包路径> <新目录> <预期ID> <预期SHA-256>");
     Console.Error.WriteLine("      keygen <私钥.pem> <公钥.pem> | sign <包> <私钥.pem> <签名文件> | verify <包> <签名文件> <公钥.pem>");
     return 1;
@@ -92,7 +92,20 @@ try
         if (stream.Length > 128L * 1024 * 1024) throw new ArgumentException("单个文件过大。");
         return new PackageFile(Path.GetRelativePath(source, p).Replace('\\', '/'), stream.Length, Convert.ToHexString(SHA256.HashData(stream)));
     }).ToArray();
-    var manifest = JsonSerializer.SerializeToUtf8Bytes(new PackageManifest(id, version, files));
+    PackageManifest package;
+    if (args.Length == 6)
+    {
+        var info = JsonSerializer.Deserialize<PackageInfo>(File.ReadAllBytes(args[5]), new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+            ?? throw new ArgumentException("拓展信息无效。");
+        if (string.IsNullOrWhiteSpace(info.Name) || info.Name.Length > 80 || info.Description is null || info.Description.Length > 300
+            || string.IsNullOrWhiteSpace(info.Author) || info.Author.Length > 80 || !Version.TryParse(info.MinHostVersion, out _)
+            || info.Architecture is not ("win-x64" or "win-arm64" or "win-x86")
+            || (!string.IsNullOrEmpty(info.IconPath) && (!info.IconPath.EndsWith(".png", StringComparison.OrdinalIgnoreCase) || !files.Any(file => file.Path == info.IconPath))))
+            throw new ArgumentException("拓展名称、作者、版本要求、架构或图标无效。");
+        package = new PackageManifest(id, version, files, info.Name, info.Description, info.Author, info.IconPath, info.MinHostVersion, info.Architecture);
+    }
+    else package = new PackageManifest(id, version, files);
+    var manifest = JsonSerializer.SerializeToUtf8Bytes(package);
     if (manifest.Length > 1024 * 1024 || files.Sum(f => f.Size) + manifest.Length + 12 > 512L * 1024 * 1024) throw new ArgumentException("包过大。");
     using (var output = new FileStream(target, FileMode.CreateNew, FileAccess.Write, FileShare.None))
     using (var writer = new BinaryWriter(output, Encoding.UTF8))
@@ -107,3 +120,5 @@ try
     return 0;
 }
 catch (Exception ex) { Console.Error.WriteLine(ex.Message); return 1; }
+
+internal sealed record PackageInfo(string Name, string Description, string Author, string? IconPath, string MinHostVersion, string Architecture);

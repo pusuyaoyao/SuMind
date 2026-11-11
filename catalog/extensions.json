@@ -1,0 +1,21 @@
+{
+  "extensions": [
+    {
+      "id": "desktop-navigation",
+      "name": "桌面导航",
+      "description": "管理 Windows 任务栏外观，Dock 功能仍在规划。",
+      "version": "0.1.1",
+      "author": "pusu11",
+      "minHostVersion": "1.0.0",
+      "architecture": "win-x64",
+      "packageUrl": "https://github.com/pusuyaoyao/SuMind/releases/download/desktop-navigation-v0.1.1-preview/DesktopNavigation-0.1.1-win-x64-preview.suminds",
+      "sha256": "cce1e223f20208be80624af4f9214dc176306d90b4409286844265639180a743",
+      "size": 183345,
+      "signature": "",
+      "isPreview": true,
+      "iconUrl": "https://github.com/pusuyaoyao/SuMind/releases/download/desktop-navigation-v0.1.1-preview/icon.png",
+      "iconSha256": "83814626a6197013428379bf024442be01423e2e4359e35714b9fb071196096f"
+    }
+  ],
+  "schemaVersion": 1
+}

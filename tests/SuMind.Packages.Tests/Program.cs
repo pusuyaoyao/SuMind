@@ -16,7 +16,7 @@ try
     (string file, string hash, byte[] signature) MakePackage(string version, string name, string content)
     {
         byte[] data = Encoding.UTF8.GetBytes(content);
-        var manifest = new PackageManifest(id, version, [new PackageFile(name, data.Length, Convert.ToHexString(SHA256.HashData(data)))]);
+        var manifest = new PackageManifest(id, version, [new PackageFile(name, data.Length, Convert.ToHexString(SHA256.HashData(data)))], "桌面导航", "任务栏", "pusu11", null, "1.0.0", "win-x64");
         byte[] json = JsonSerializer.SerializeToUtf8Bytes(manifest);
         string file = Path.Combine(root, Guid.NewGuid().ToString("N") + ".suminds");
         using (var stream = File.Create(file))
@@ -40,11 +40,12 @@ try
     Reject(() => PackageInstaller.Install(second.file, installRoot, id, "2.0.0", second.hash, second.signature, other.ExportSubjectPublicKeyInfoPem()), "untrusted key accepted");
     Reject(() => PackageInstaller.Install(second.file, installRoot, id, "2.0.1", second.hash, second.signature, publicKey), "mismatched version accepted");
     Reject(() => PackageInstaller.Install(second.file, installRoot, id, "2.0.0", new string('0', 64), second.signature, publicKey), "bad hash accepted");
+    Reject(() => PackageInstaller.Install(second.file, installRoot, id, "2.0.0", second.hash, second.signature, publicKey, new PackageMetadata("桌面导航", "任务栏", "wrong", "1.0.0", "win-x64")), "mismatched author accepted");
     Assert(PackageInstaller.GetInstalled(installRoot, id)?.Version == "1.0.0", "failed install changed active version");
     var malicious = MakePackage("3.0.0", "../escape.txt", "escape");
     Reject(() => PackageInstaller.Install(malicious.file, installRoot, id, "3.0.0", malicious.hash, malicious.signature, publicKey), "traversal accepted");
     Assert(!File.Exists(Path.Combine(root, "escape.txt")), "escaped installation directory");
-    PackageInstaller.Install(second.file, installRoot, id, "2.0.0", second.hash, second.signature, publicKey);
+    PackageInstaller.Install(second.file, installRoot, id, "2.0.0", second.hash, second.signature, publicKey, new PackageMetadata("桌面导航", "任务栏", "pusu11", "1.0.0", "win-x64"));
     Assert(PackageInstaller.GetInstalled(installRoot, id)?.Version == "2.0.0", "upgrade failed");
     PackageInstaller.ActivateVersion(installRoot, id, "1.0.0");
     Assert(PackageInstaller.GetInstalled(installRoot, id)?.Version == "1.0.0", "rollback failed");

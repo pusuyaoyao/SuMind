@@ -1,0 +1,8 @@
+{
+  "name": "桌面导航",
+  "iconPath": "assets/icon.png",
+  "minHostVersion": "1.0.0",
+  "description": "管理 Windows 任务栏外观，Dock 功能仍在规划。",
+  "author": "pusu11",
+  "architecture": "win-x64"
+}

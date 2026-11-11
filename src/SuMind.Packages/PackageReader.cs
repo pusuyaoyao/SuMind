@@ -5,7 +5,9 @@ using System.Text.Json;
 namespace SuMind.Packages;
 
 public sealed record PackageFile(string Path, long Size, string Sha256);
-public sealed record PackageManifest(string Id, string Version, PackageFile[] Files);
+public sealed record PackageManifest(string Id, string Version, PackageFile[] Files,
+    string? Name = null, string? Description = null, string? Author = null, string? IconPath = null,
+    string? MinHostVersion = null, string? Architecture = null);
 
 /// <summary>Reader for the preliminary, uncompressed SUMINDS1 container. This verifies integrity, not publisher identity.</summary>
 public static class PackageReader

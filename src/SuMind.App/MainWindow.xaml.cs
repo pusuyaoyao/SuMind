@@ -14,6 +14,7 @@ using SuMind.Packages;
 using System.IO;
 using System.Diagnostics;
 using System.Text.Json;
+using System.Windows.Media.Imaging;
 
 namespace SuMind;
 
@@ -70,15 +71,7 @@ public partial class MainWindow : Window
             SettingsNotice.Text = "拓展配置读取失败，请检查本地配置。";
         }
 
-        ModuleEntry Planned(string id, string name, string description) => new(
-            new ModuleDescriptor(id, name, description),
-            new ModuleStatus(InstallationState.NotInstalled, EnablementState.Unavailable,
-                RuntimeState.NotRunning, "尚未提供"));
-        ModuleList.ItemsSource = new[]
-        {
-            Planned("wallpaper", "壁纸引擎", "管理桌面壁纸，计划支持动态壁纸。"),
-            Planned("system-optimization", "系统工具", "查看和管理系统设置与维护工具。")
-        };
+        ModuleList.ItemsSource = Array.Empty<CatalogRow>();
         (settings.Theme switch { "Light" => LightTheme, "Dark" => DarkTheme, _ => SystemTheme }).IsChecked = true;
         CloseToTrayBox.IsChecked = settings.CloseToTray;
         ExtensionPathText.Text = ExtensionRoot;
@@ -176,13 +169,21 @@ public partial class MainWindow : Window
         {
             var catalog = await ExtensionCatalogService.GetCatalogAsync();
             var architecture = RuntimeInformation.ProcessArchitecture switch { Architecture.X64 => "win-x64", Architecture.Arm64 => "win-arm64", Architecture.X86 => "win-x86", _ => "unsupported" };
-            desktopCatalogItem = catalog?.Extensions.FirstOrDefault(item => item.Id == DesktopId && item.Architecture == architecture);
+            var entries = catalog?.Extensions.GroupBy(item => item.Id, StringComparer.OrdinalIgnoreCase)
+                .Select(group => group.FirstOrDefault(item => item.Architecture == architecture) ?? group.First())
+                .ToArray() ?? Array.Empty<ExtensionCatalogItem>();
+            desktopCatalogItem = entries.FirstOrDefault(item => item.Id == DesktopId);
+            var rows = entries.Where(item => item.Id != DesktopId).Select(item => new CatalogRow(item)).ToArray();
+            ModuleList.ItemsSource = rows;
+            CatalogListBorder.Visibility = entries.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+            CatalogEmpty.Visibility = entries.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+            foreach (var row in rows) _ = LoadCatalogIconAsync(row);
+            if (desktopCatalogItem is not null) _ = LoadDesktopIconAsync(desktopCatalogItem);
             GitHubStatus.Text = catalog is null ? "尚未发布拓展目录。" : "拓展目录已更新。";
             RefreshDesktopState();
         }
         catch (Exception ex) when (ex is System.Net.Http.HttpRequestException or TaskCanceledException or System.Text.Json.JsonException or IOException or InvalidOperationException)
         {
-            desktopCatalogItem = null;
             SettingsStore.Log(ex);
             GitHubStatus.Text = "无法读取 GitHub 发布信息，请检查网络后重试。";
             RefreshDesktopState();
@@ -195,6 +196,13 @@ public partial class MainWindow : Window
 
     private void RefreshDesktopState()
     {
+        DesktopCard.Visibility = desktopCatalogItem is null ? Visibility.Collapsed : Visibility.Visible;
+        if (desktopCatalogItem is not null)
+        {
+            DesktopName.Text = desktopCatalogItem.Name;
+            DesktopDescription.Text = desktopCatalogItem.Description;
+            DesktopMetadata.Text = desktopCatalogItem.Metadata;
+        }
         try { desktopPackage = PackageInstaller.GetInstalled(ExtensionRoot, DesktopId); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or ArgumentException)
         {
@@ -208,9 +216,11 @@ public partial class MainWindow : Window
         bool installed = desktopPackage is not null;
         bool trusted = !string.IsNullOrEmpty(TrustedPublisherPublicKey);
         bool updateAvailable = installed && desktopCatalogItem is not null && Version.TryParse(desktopCatalogItem.Version, out var available) && Version.TryParse(desktopPackage!.Version, out var current) && available > current;
-        DesktopStatus.Text = installed ? $"已安装 {desktopPackage!.Version}" + (updateAvailable ? $" · 可更新至 {desktopCatalogItem!.Version}" : "") : desktopCatalogItem is null ? "尚无可安装版本" : !trusted ? "发布签名尚未配置" : $"可安装 {desktopCatalogItem.Version}";
+        bool preview = desktopCatalogItem?.IsPreview == true;
+        bool compatible = desktopCatalogItem?.Architecture == (RuntimeInformation.ProcessArchitecture switch { Architecture.X64 => "win-x64", Architecture.Arm64 => "win-arm64", Architecture.X86 => "win-x86", _ => "unsupported" });
+        DesktopStatus.Text = installed ? $"已安装 {desktopPackage!.Version}" + (updateAvailable ? $" · 可更新至 {desktopCatalogItem!.Version}" : "") : desktopCatalogItem is null ? "尚无可安装版本" : preview ? "预览包尚未通过验证，暂不可安装" : !compatible ? "当前系统架构不受支持" : !trusted ? "发布签名尚未配置" : $"可安装 {desktopCatalogItem.Version}";
         DesktopInstallButton.Content = installed ? updateAvailable ? "更新" : "已安装" : "安装";
-        DesktopInstallButton.IsEnabled = (!installed || updateAvailable) && desktopCatalogItem is not null && trusted;
+        DesktopInstallButton.IsEnabled = (!installed || updateAvailable) && desktopCatalogItem is not null && trusted && !preview && compatible;
         DesktopRemoveButton.Visibility = installed ? Visibility.Visible : Visibility.Collapsed;
         DesktopOptions.Visibility = installed ? Visibility.Visible : Visibility.Collapsed;
         updatingDesktopControls = true;
@@ -221,7 +231,7 @@ public partial class MainWindow : Window
     private async void DesktopInstall_Click(object sender, RoutedEventArgs e)
     {
         var item = desktopCatalogItem;
-        if (item is null || packageOperation || string.IsNullOrEmpty(TrustedPublisherPublicKey)) return;
+        if (item is null || item.IsPreview || packageOperation || string.IsNullOrEmpty(TrustedPublisherPublicKey) || string.IsNullOrEmpty(item.Signature)) return;
         if (!Version.TryParse(item.MinHostVersion, out var minimum) || minimum > (typeof(MainWindow).Assembly.GetName().Version ?? new Version(0, 0)))
         { DesktopStatus.Text = "需要更新 SuMind 才能安装此拓展。"; return; }
         DesktopInstallButton.IsEnabled = false;
@@ -245,12 +255,22 @@ public partial class MainWindow : Window
 
     private void DesktopGitHub_Click(object sender, RoutedEventArgs e)
     {
+        OpenCatalogRelease(desktopCatalogItem);
+    }
+
+    private void CatalogGitHub_Click(object sender, RoutedEventArgs e)
+    {
+        if (((System.Windows.Controls.Button)sender).DataContext is CatalogRow row) OpenCatalogRelease(row.Item);
+    }
+
+    private void OpenCatalogRelease(ExtensionCatalogItem? item)
+    {
         try
         {
             string url = "https://github.com/pusuyaoyao/SuMind/releases";
-            if (desktopCatalogItem is not null)
+            if (item is not null)
             {
-                var asset = new Uri(desktopCatalogItem.PackageUrl);
+                var asset = new Uri(item.PackageUrl);
                 var segments = asset.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
                 if (segments.Length >= 6 && segments[2] == "releases" && segments[3] == "download")
                     url = "https://github.com/pusuyaoyao/SuMind/releases/tag/" + segments[4];
@@ -259,6 +279,47 @@ public partial class MainWindow : Window
         }
         catch (Exception ex) when (ex is Win32Exception or InvalidOperationException or System.Security.SecurityException)
         { SettingsStore.Log(ex); GitHubStatus.Text = "无法打开 GitHub，请检查默认浏览器。"; }
+    }
+
+    private sealed class CatalogRow : INotifyPropertyChanged
+    {
+        public CatalogRow(ExtensionCatalogItem item) => Item = item;
+        public ExtensionCatalogItem Item { get; }
+        public string Name => Item.Name;
+        public string Description => Item.Description;
+        public string Metadata => Item.Metadata;
+        private ImageSource? icon;
+        public ImageSource? Icon { get => icon; set { icon = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Icon))); } }
+        public event PropertyChangedEventHandler? PropertyChanged;
+    }
+
+    private async Task<ImageSource?> DownloadCatalogIconAsync(ExtensionCatalogItem item)
+    {
+        if (string.IsNullOrEmpty(item.IconUrl)) return null;
+        try
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            var bytes = await ExtensionCatalogService.DownloadIconAsync(item, timeout.Token);
+            if (bytes is null) return null;
+            using var input = new MemoryStream(bytes);
+            var decoder = BitmapDecoder.Create(input, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
+            if (decoder.Frames.Count != 1 || decoder.Frames[0].PixelWidth > 1024 || decoder.Frames[0].PixelHeight > 1024)
+                throw new InvalidDataException("拓展图标尺寸无效。");
+            var image = decoder.Frames[0];
+            image.Freeze();
+            return image;
+        }
+        catch (Exception ex) when (ex is IOException or System.Net.Http.HttpRequestException or OperationCanceledException or NotSupportedException or ArgumentException or System.Security.Cryptography.CryptographicException)
+        { SettingsStore.Log(ex); return null; }
+    }
+
+    private async Task LoadCatalogIconAsync(CatalogRow row) => row.Icon = await DownloadCatalogIconAsync(row.Item);
+    private async Task LoadDesktopIconAsync(ExtensionCatalogItem item)
+    {
+        DesktopIcon.Source = null;
+        DesktopIconPlaceholder.Visibility = Visibility.Visible;
+        var icon = await DownloadCatalogIconAsync(item);
+        if (desktopCatalogItem == item) { DesktopIcon.Source = icon; DesktopIconPlaceholder.Visibility = icon is null ? Visibility.Visible : Visibility.Collapsed; }
     }
 
     private async void LocalInstall_Click(object sender, RoutedEventArgs e)
@@ -271,6 +332,8 @@ public partial class MainWindow : Window
         var item = desktopCatalogItem;
         if (item is null)
         { GitHubStatus.Text = "无法获取匹配的发布信息，请连接网络并刷新后重试。"; return; }
+        if (item.IsPreview || string.IsNullOrEmpty(item.Signature))
+        { GitHubStatus.Text = "开发预览包尚未完成签名和兼容性验证，暂不可安装。"; return; }
         if (!Version.TryParse(item.MinHostVersion, out var minimum) || minimum > (typeof(MainWindow).Assembly.GetName().Version ?? new Version(0, 0)))
         { GitHubStatus.Text = "需要更新 SuMind 才能安装此拓展。"; return; }
         if (desktopPackage is not null && Version.TryParse(desktopPackage.Version, out var installedVersion) && Version.TryParse(item.Version, out var candidateVersion) && candidateVersion <= installedVersion)
@@ -328,7 +391,7 @@ public partial class MainWindow : Window
             InstalledPackage installed;
             try
             {
-                installed = await Task.Run(() => PackageInstaller.Install(packagePath, ExtensionRoot, item.Id, item.Version, item.Sha256, Convert.FromBase64String(item.Signature), TrustedPublisherPublicKey));
+                installed = await Task.Run(() => PackageInstaller.Install(packagePath, ExtensionRoot, item.Id, item.Version, item.Sha256, Convert.FromBase64String(item.Signature!), TrustedPublisherPublicKey, new PackageMetadata(item.Name, item.Description, item.Author, item.MinHostVersion, item.Architecture, item.IconSha256)));
             }
             catch
             {

@@ -206,14 +206,15 @@
                                     <TextBlock Text="所有拓展" FontSize="14" FontWeight="SemiBold" />
                                     <TextBlock Text="拓展状态" HorizontalAlignment="Right" Foreground="{DynamicResource MutedBrush}" FontSize="12" />
                                 </Grid>
-                                <Border Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="10">
+                                <TextBlock x:Name="CatalogEmpty" Text="暂无已发布的拓展。" Foreground="{DynamicResource MutedBrush}" Margin="0,8,0,0" Visibility="Collapsed"/>
+                                <Border x:Name="CatalogListBorder" Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="10" Visibility="Collapsed">
                                   <StackPanel>
-                                    <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="20,18">
+                                    <Border x:Name="DesktopCard" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="20,18" Visibility="Collapsed">
                                       <StackPanel>
                                         <Grid>
                                           <Grid.ColumnDefinitions><ColumnDefinition Width="46"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                          <Border Width="36" Height="36" CornerRadius="9" Background="{DynamicResource FrameBrush}" HorizontalAlignment="Left" VerticalAlignment="Top"><TextBlock Text="&#xE7F4;" FontFamily="Segoe MDL2 Assets" FontSize="17" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
-                                          <StackPanel Grid.Column="1" Margin="4,0,16,0"><TextBlock Text="桌面导航" FontSize="14" FontWeight="SemiBold"/><TextBlock Text="管理任务栏外观，后续支持 Dock。" Foreground="{DynamicResource MutedBrush}" FontSize="12" Margin="0,5,0,0" TextWrapping="Wrap"/><TextBlock x:Name="DesktopStatus" Foreground="{DynamicResource MutedBrush}" FontSize="12" Margin="0,8,0,0" TextWrapping="Wrap" Text="正在检查拓展状态…"/></StackPanel>
+                                          <Border Width="36" Height="36" CornerRadius="9" Background="{DynamicResource FrameBrush}" HorizontalAlignment="Left" VerticalAlignment="Top"><Grid><TextBlock x:Name="DesktopIconPlaceholder" Text="&#xE74C;" FontFamily="Segoe MDL2 Assets" FontSize="17" HorizontalAlignment="Center" VerticalAlignment="Center"/><Image x:Name="DesktopIcon" Width="24" Height="24" Stretch="Uniform"/></Grid></Border>
+                                          <StackPanel Grid.Column="1" Margin="4,0,16,0"><TextBlock x:Name="DesktopName" FontSize="14" FontWeight="SemiBold"/><TextBlock x:Name="DesktopDescription" Foreground="{DynamicResource MutedBrush}" FontSize="12" Margin="0,5,0,0" TextWrapping="Wrap"/><TextBlock x:Name="DesktopMetadata" Foreground="{DynamicResource MutedBrush}" FontSize="12" Margin="0,5,0,0" TextWrapping="Wrap"/><TextBlock x:Name="DesktopStatus" Foreground="{DynamicResource MutedBrush}" FontSize="12" Margin="0,6,0,0" TextWrapping="Wrap" Text="正在检查拓展状态…"/></StackPanel>
                                           <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center"><Button Style="{StaticResource SecondaryButton}" Content="GitHub ↗" Click="DesktopGitHub_Click" ToolTip="查看桌面导航发布页面"/><Button x:Name="DesktopInstallButton" Style="{StaticResource SecondaryButton}" Content="安装" Margin="6,0,0,0" Click="DesktopInstall_Click" IsEnabled="False"/><Button x:Name="DesktopRemoveButton" Style="{StaticResource SecondaryButton}" Content="卸载" Margin="6,0,0,0" Click="DesktopRemove_Click" Visibility="Collapsed"/></StackPanel>
                                         </Grid>
                                         <StackPanel x:Name="DesktopOptions" Margin="50,18,0,0" Visibility="Collapsed">
@@ -229,15 +230,14 @@
                                                 <Grid>
                                                     <Grid.ColumnDefinitions><ColumnDefinition Width="46"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                                     <Border Width="36" Height="36" CornerRadius="9" Background="{DynamicResource FrameBrush}" VerticalAlignment="Center" HorizontalAlignment="Left">
-                                                        <TextBlock Text="{Binding Icon}" FontFamily="Segoe MDL2 Assets" FontSize="17" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                        <Grid><TextBlock Text="&#xE74C;" FontFamily="Segoe MDL2 Assets" FontSize="17" HorizontalAlignment="Center" VerticalAlignment="Center"><TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding Icon}" Value="{x:Null}"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></TextBlock.Style></TextBlock><Image Source="{Binding Icon}" Width="24" Height="24" Stretch="Uniform" /></Grid>
                                                     </Border>
                                                     <StackPanel Grid.Column="1" Margin="4,0,16,0" VerticalAlignment="Center">
                                                         <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="SemiBold" />
                                                         <TextBlock Text="{Binding Description}" Foreground="{DynamicResource MutedBrush}" FontSize="12" TextWrapping="Wrap" Margin="0,5,0,0" />
+                                                        <TextBlock Text="{Binding Metadata}" Foreground="{DynamicResource MutedBrush}" FontSize="12" TextWrapping="Wrap" Margin="0,5,0,0" />
                                                     </StackPanel>
-                                                    <TextBlock Grid.Column="2" Foreground="{DynamicResource MutedBrush}" FontSize="11" VerticalAlignment="Center">
-                                                        <Run Text="{Binding Detail, Mode=OneWay}" /><Run Text=" · " /><Run Text="{Binding InstallationText, Mode=OneWay}" /><Run Text=" · " /><Run Text="{Binding EnablementText, Mode=OneWay}" /><Run Text=" · " /><Run Text="{Binding RuntimeText, Mode=OneWay}" />
-                                                    </TextBlock>
+                                                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center"><Button Style="{StaticResource SecondaryButton}" Content="GitHub ↗" Click="CatalogGitHub_Click"/><Button Style="{StaticResource SecondaryButton}" Content="暂不可安装" Margin="6,0,0,0" IsEnabled="False"/></StackPanel>
                                                 </Grid>
                                             </Border>
                                         </DataTemplate></ItemsControl.ItemTemplate>

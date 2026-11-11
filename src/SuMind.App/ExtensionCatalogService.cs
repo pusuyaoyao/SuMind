@@ -10,7 +10,11 @@ namespace SuMind;
 // packages MUST also be verified with a public key trusted by the application.
 internal sealed record ExtensionCatalog(int SchemaVersion, ExtensionCatalogItem[] Extensions);
 internal sealed record ExtensionCatalogItem(string Id, string Name, string Description, string Version,
-    string MinHostVersion, string Architecture, string PackageUrl, string Sha256, long Size, string Signature);
+    string MinHostVersion, string Architecture, string PackageUrl, string Sha256, long Size, string? Signature,
+    string Author = "", bool IsPreview = false, string? IconUrl = null, string? IconSha256 = null)
+{
+    public string Metadata => $"版本 {Version} · 作者 {Author}" + (IsPreview ? " · 开发预览" : "");
+}
 
 internal static class ExtensionCatalogService
 {
@@ -97,25 +101,62 @@ internal static class ExtensionCatalogService
         return CryptographicOperations.FixedTimeEquals(digest, Convert.FromHexString(item.Sha256));
     }
 
+    public static async Task<byte[]?> DownloadIconAsync(ExtensionCatalogItem item, CancellationToken cancellationToken = default)
+    {
+        Validate(item);
+        if (string.IsNullOrEmpty(item.IconUrl)) return null;
+        using var response = await GetReleaseAssetAsync(new Uri(item.IconUrl), cancellationToken);
+        response.EnsureSuccessStatusCode();
+        const int limit = 512 * 1024;
+        if (response.Content.Headers.ContentLength > limit) throw new InvalidDataException("拓展图标过大。");
+        await using var input = await response.Content.ReadAsStreamAsync(cancellationToken);
+        using var buffer = new MemoryStream();
+        byte[] chunk = new byte[8192];
+        int read;
+        while ((read = await input.ReadAsync(chunk, cancellationToken)) != 0)
+        {
+            if (buffer.Length + read > limit) throw new InvalidDataException("拓展图标过大。");
+            await buffer.WriteAsync(chunk.AsMemory(0, read), cancellationToken);
+        }
+        byte[] bytes = buffer.ToArray();
+        if (bytes.Length < 24 || !bytes.AsSpan(0, 8).SequenceEqual(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 }))
+            throw new InvalidDataException("拓展图标不是 PNG 文件。");
+        if (!CryptographicOperations.FixedTimeEquals(SHA256.HashData(bytes), Convert.FromHexString(item.IconSha256!)))
+            throw new InvalidDataException("拓展图标校验失败。");
+        return bytes;
+    }
+
     internal static void Validate(ExtensionCatalogItem? item)
     {
         if (item is null || string.IsNullOrEmpty(item.Id) || item.Id.Length > 80 || !item.Id.All(c => char.IsAsciiLetterOrDigit(c) || c == '-')
             || string.IsNullOrWhiteSpace(item.Name) || item.Name.Length > 80 || item.Description is null || item.Description.Length > 300
+            || string.IsNullOrWhiteSpace(item.Author) || item.Author.Length > 80
             || !System.Version.TryParse(item.Version, out _) || !System.Version.TryParse(item.MinHostVersion, out _)
             || item.Architecture is not ("win-x64" or "win-arm64" or "win-x86") || item.Size <= 0 || item.Size > MaxPackageBytes
             || item.Sha256 is null || item.Sha256.Length != 64 || !item.Sha256.All(Uri.IsHexDigit)
-            || string.IsNullOrEmpty(item.Signature) || item.Signature.Length > 2048
+            || (!item.IsPreview && string.IsNullOrEmpty(item.Signature)) || item.Signature?.Length > 2048
             || !Uri.TryCreate(item.PackageUrl, UriKind.Absolute, out var url) || !IsReleaseUrl(url))
             throw new InvalidDataException("拓展目录条目无效。");
+        if (!string.IsNullOrEmpty(item.IconUrl))
+        {
+            if (item.IconSha256 is null || item.IconSha256.Length != 64 || !item.IconSha256.All(Uri.IsHexDigit)
+                || !Uri.TryCreate(item.IconUrl, UriKind.Absolute, out var icon) || !IsReleaseAssetUrl(icon, ".png")
+                || !string.Equals(icon.AbsolutePath[..(icon.AbsolutePath.LastIndexOf('/') + 1)], url.AbsolutePath[..(url.AbsolutePath.LastIndexOf('/') + 1)], StringComparison.Ordinal))
+                throw new InvalidDataException("拓展图标地址无效。");
+        }
+        else if (!string.IsNullOrEmpty(item.IconSha256)) throw new InvalidDataException("拓展图标信息不完整。");
+        if (string.IsNullOrEmpty(item.Signature)) return;
         try { if (Convert.FromBase64String(item.Signature).Length == 0) throw new FormatException(); }
         catch (FormatException) { throw new InvalidDataException("拓展签名格式无效。"); }
     }
 
-    private static bool IsReleaseUrl(Uri url) => url.Scheme == Uri.UriSchemeHttps && url.IsDefaultPort
+    private static bool IsReleaseUrl(Uri url) => IsReleaseAssetUrl(url, ".suminds");
+
+    private static bool IsReleaseAssetUrl(Uri url, string extension) => url.Scheme == Uri.UriSchemeHttps && url.IsDefaultPort
         && string.IsNullOrEmpty(url.UserInfo) && string.IsNullOrEmpty(url.Query) && string.IsNullOrEmpty(url.Fragment)
         && url.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase)
         && url.AbsolutePath.StartsWith("/pusuyaoyao/SuMind/releases/download/", StringComparison.Ordinal)
-        && url.AbsolutePath.EndsWith(".suminds", StringComparison.OrdinalIgnoreCase);
+        && url.AbsolutePath.EndsWith(extension, StringComparison.OrdinalIgnoreCase);
 
     private static async Task<HttpResponseMessage> GetReleaseAssetAsync(Uri uri, CancellationToken cancellationToken)
     {

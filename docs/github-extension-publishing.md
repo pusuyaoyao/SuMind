@@ -12,6 +12,7 @@
     "name": "桌面导航",
     "description": "管理任务栏外观",
     "version": "1.0.0",
+    "author": "作者",
     "minHostVersion": "1.0.0",
     "architecture": "win-x64",
     "packageUrl": "https://github.com/pusuyaoyao/SuMind/releases/download/desktop-navigation-v1.0.0/DesktopNavigation-1.0.0-win-x64.suminds",
@@ -22,7 +23,9 @@
 }
 ```
 
-实际发布时，先构建和测试拓展、创建 `.suminds` 文件；使用 RSA 3072 位或以上的私钥、RSA-PSS/SHA-256 对完整包字节生成分离签名；把包添加到版本化 GitHub Release，记录文件实际长度、SHA-256 和签名的 Base64 编码；最后更新目录。校验用的 SubjectPublicKeyInfo PEM 公钥必须内置于主程序，不能来自目录。不得将签名私钥提交或上传到仓库，密钥轮换方案须在正式发布前确定。
+名称、介绍、作者、版本、最低主程序版本、架构以及可选的 PNG 图标路径存于拓展包清单中；`SuMind.PackageTool pack` 的可选第六个参数读取拓展信息 JSON。发布时用 `scripts/new-catalog-entry.ps1` 从包中生成目录条目，并将包内同一个 PNG 作为同一 Release 的附件供列表加载。目录是索引，安装时校验包内元数据和图标摘要与目录一致。
+
+实际发布时，先构建和测试拓展、创建 `.suminds` 文件；使用 RSA 3072 位或以上的私钥、RSA-PSS/SHA-256 对完整包字节生成分离签名；把包添加到版本化 GitHub Release，记录文件实际长度、SHA-256 和签名的 Base64 编码；最后更新目录。校验用的 SubjectPublicKeyInfo PEM 公钥必须内置于主程序，不能来自目录。不得将签名私钥提交或上传到仓库，密钥轮换方案须在正式发布前确定。预览包可无签名展示，安装入口必须禁用。
 
 目录和包读取有数量与大小限制。Release 资源 URL 必须为当前仓库的 HTTPS 地址，下载时校验重定向主机、大小和 SHA-256。签名验证、版本兼容和安装事务由安装层负责。
 
